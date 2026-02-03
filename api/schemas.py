@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import Optional
 from uuid import UUID
 
 
@@ -25,6 +26,11 @@ class WorkflowBase(BaseModel):
     name: str
     status: str
     description: str
+
+class WorkflowUpdate(BaseModel):
+    name: Optional[str] = None
+    status: Optional[str] = None
+    description: Optional[str] = None
 
 class WorkflowCreate(WorkflowBase):
     user_id: UUID
