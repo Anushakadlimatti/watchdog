@@ -61,3 +61,18 @@ class TriggerRead(TriggerBase):
 
     class Config:
         from_attributes: True
+
+class ActionBase(BaseModel):
+    type: str
+    config: Dict[str, Any]
+
+class ActionUpdate(ActionBase):
+    type: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
+
+class ActionRead(ActionBase):
+    id: UUID
+    workflow_id: UUID
+
+    class Config:
+        from_attributes = True

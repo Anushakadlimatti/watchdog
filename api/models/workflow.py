@@ -32,3 +32,13 @@ class Trigger(Base):
     config = Column(JSONB, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class Action(Base):
+    __tablename__ = "actions"
+    id = Column(UUID(as_uuid=True), primary_key=True, index= True, default=uuid.uuid4)
+    workflow_id = Column(UUID(as_uuid=True), ForeignKey(Workflow.id))
+    type = Column(String)
+    config = Column(JSONB, nullable=False)
+    created_at=Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at= Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

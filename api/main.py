@@ -1,8 +1,8 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from config.database import sessionLocal, engine
 from sqlalchemy.orm import Session
-from models.workflow import User, Base, Workflow, Trigger
-from schemas import UserCreate, WorkflowCreate, WorkflowRead, WorkflowUpdate, UserRead, TriggerRead, TriggerBase, TriggerUpdate
+from models.workflow import User, Base, Workflow, Trigger, Action
+from schemas import UserCreate, WorkflowCreate, WorkflowRead, WorkflowUpdate, UserRead, TriggerRead, TriggerBase, TriggerUpdate, ActionBase, ActionRead, ActionUpdate
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
 
@@ -226,5 +226,113 @@ def removeTrigger(workflowId: UUID,triggerId: UUID, db: Session = Depends(get_db
             detail="Remove failed"
         )
     
+@app.get("/workflows/{workflowId}/actions", response_model=list[ActionRead], status_code=status.HTTP_200_OK)
+def getAllActions(workflowId: UUID, db: Session = Depends(get_db)):
+    workflow_exits = db.query(Workflow).filter(Workflow.id == workflowId).first()
+
+    if not workflow_exits:
+        raise HTTPException(
+            status_code=404,
+            detail="Workflow not found"
+        )
     
+    allActions = db.query(Action).filter(Action.workflow_id == workflowId).all()
+    return allActions
+
+@app.post("/workflows/{workflowId}/actions", response_model=ActionRead, status_code=status.HTTP_201_CREATED)
+def createAction(workflowId: UUID, data: ActionBase, db: Session = Depends(get_db)):
+    workflow_exits = db.query(Workflow).filter(Workflow.id == workflowId).first()
+
+    if not workflow_exits:
+        raise HTTPException(
+            status_code=404,
+            detail="Workflow not found"
+        )
     
+    new_action = Action(
+        id = uuid4(),
+        workflow_id = workflowId,
+        type = data.type,
+        config = data.config,
+        created_at = datetime.now(timezone.utc),
+        updated_at = datetime.now(timezone.utc)
+    )
+
+    try:
+        db.add(new_action)
+        db.commit()
+        db.refresh(new_action)
+        return new_action
+    except Exception as e:
+        db.rollback()
+        print(e)
+        raise HTTPException(
+            status_code=400,
+            detail="Action creation failed."
+        )
+    
+@app.put("/workflows/{workflowId}/actions/{actionId}", response_model=ActionRead, status_code=status.HTTP_200_OK)
+def updateAction(workflowId: UUID, actionId: UUID, data: ActionUpdate, db: Session = Depends(get_db)):
+    workflow_exits = db.query(Workflow).filter(Workflow.id == workflowId).first()
+
+    if not workflow_exits:
+        raise HTTPException(
+            status_code=404,
+            detail="Workflow not found"
+        )
+    
+    action_to_update = db.query(Action).filter(Action.id == actionId).first()
+
+    if not action_to_update:
+        raise HTTPException(
+            status_code=404,
+            detail="Action not found."
+        )
+    
+    if data.type is not None:
+        action_to_update.type = data.type
+    if data.config is not None:
+        action_to_update.config = data.config
+    action_to_update.updated_at = datetime.now(timezone.utc)
+
+    try:
+        db.commit()
+        db.refresh(action_to_update)
+        return action_to_update
+    except Exception as e:
+        db.rollback()
+        print(e)
+        raise HTTPException(
+            status_code=400,
+            detail="Failed to updated action"
+        )
+    
+@app.delete("/workflows/{workflowId}/actions/{actionId}", status_code=status.HTTP_200_OK)
+def deleteAction(workflowId: UUID, actionId: UUID, db: Session = Depends(get_db)):
+    workflow_exits = db.query(Workflow).filter(Workflow.id == workflowId).first()
+
+    if not workflow_exits:
+        raise HTTPException(
+            status_code=404,
+            detail="Workflow not found"
+        )
+    
+    action_to_delete = db.query(Action).filter(Action.id == actionId, Action.workflow_id == workflowId).first()
+
+    if not action_to_delete:
+        raise HTTPException(
+            status_code=404,
+            detail="Action not found."
+        )
+    
+    try:
+        db.delete(action_to_delete)
+        db.commit()
+        return "Action deleted"
+    except Exception as e:
+        db.rollback()
+        print(e)
+        raise HTTPException(
+            status_code=400,
+            detail="Failed to delete action"
+        )
