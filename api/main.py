@@ -1,8 +1,8 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from config.database import sessionLocal, engine
 from sqlalchemy.orm import Session
-from models.workflow import User, Base, Workflow
-from schemas import UserCreate, WorkflowCreate, WorkflowRead, WorkflowUpdate, UserRead
+from models.workflow import User, Base, Workflow, Trigger
+from schemas import UserCreate, WorkflowCreate, WorkflowRead, WorkflowUpdate, UserRead, TriggerRead, TriggerBase, TriggerUpdate
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
 
@@ -119,3 +119,112 @@ def delete_workflow(workflowId: UUID, db: Session = Depends(get_db)):
     db.delete(workflow_to_delete)
     db.commit()
     return "Workflow deleted successfully."
+
+@app.get("/workflows/{workflowId}/triggers", response_model=list[TriggerRead], status_code=status.HTTP_200_OK)
+def getAllTriggers(workflowId: UUID, db: Session = Depends(get_db)):
+    workflowExists = db.query(Workflow).filter(Workflow.id == workflowId).first()
+
+    if not workflowExists:
+        raise HTTPException(
+            status_code=404,
+            detail="Workflow not found."
+        )
+    
+    triggers = db.query(Trigger).filter(Trigger.workflow_id == workflowId).all()
+    return triggers
+
+@app.post("/workflows/{workflowId}/triggers", response_model=TriggerRead, status_code=status.HTTP_201_CREATED)
+def addTrigger(workflowId: UUID, data: TriggerBase, db: Session = Depends(get_db)):
+    workflowExists = db.query(Workflow).filter(Workflow.id == workflowId).first()
+    if not workflowExists:
+        raise HTTPException(
+            status_code=404,
+            detail="Workflow not found."
+        )
+    new_trigger = Trigger(
+        id= uuid4(),
+        workflow_id= workflowId,
+        type = data.type,
+        config = data.config,
+        created_at = datetime.now(timezone.utc),
+        updated_at = datetime.now(timezone.utc)
+    )
+    try:
+        db.add(new_trigger)
+        db.commit()
+        db.refresh(new_trigger)
+        return new_trigger
+    except Exception as e:
+        db.rollback()
+        print(e, "error")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Bad Request"
+        )
+
+@app.put("/workflows/{workflowId}/triggers/{triggerId}", response_model=TriggerRead, status_code=status.HTTP_200_OK)
+def updateTrigger(workflowId: UUID, triggerId: UUID, data: TriggerUpdate, db: Session = Depends(get_db)):
+    workflowExits = db.query(Workflow).filter(Workflow.id == workflowId).first()
+    trigger_to_update = db.query(Trigger).filter(Trigger.id == triggerId).first()
+
+    if not workflowExits:
+        raise HTTPException(
+            status_code=404,
+            detail="Workflow not exits."
+        )
+    
+    if not trigger_to_update:
+        raise HTTPException(
+            status_code=404,
+            detail="Trigger not found."
+        )
+    
+    if data.type is not None:
+        trigger_to_update.type = data.type
+    if data.config is not None:
+        trigger_to_update.config = data.config
+    trigger_to_update.updated_at = datetime.now(timezone.utc)
+
+    try:
+        db.commit()
+        db.refresh(trigger_to_update)
+        return trigger_to_update
+    except Exception as e:
+        db.rollback()
+        print(e)
+        raise HTTPException(
+            status_code=400,
+            detail="Failed to update trigger"
+        )
+    
+@app.delete("/workflows/{workflow}/triggers/{triggerId}", status_code=status.HTTP_200_OK)
+def removeTrigger(workflowId: UUID,triggerId: UUID, db: Session = Depends(get_db)):
+    workflowExits = db.query(Workflow).filter(Workflow.id == workflowId).first()
+    trigger_to_delete = db.query(Trigger).filter(Trigger.id == triggerId).first()
+
+    if not workflowExits:
+        raise HTTPException(
+            status_code=404,
+            detail="Workflow not exits."
+        )
+    
+    if not trigger_to_delete:
+        raise HTTPException(
+            status_code=404,
+            detail="Trigger not found."
+        )
+    
+    try:
+        db.delete(trigger_to_delete)
+        db.commit()
+        return "Trigger removed"
+    except Exception as e:
+        db.rollback()
+        print(e)
+        raise HTTPException(
+            status_code=400,
+            detail="Remove failed"
+        )
+    
+    
+    

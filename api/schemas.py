@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Any, Dict
 from uuid import UUID
 
 
@@ -41,3 +41,23 @@ class WorkflowRead(WorkflowBase):
 
     class Config:
         from_attributes = True
+
+# Trigger Schemas
+
+class TriggerBase(BaseModel):
+    type: str
+    config: Dict[str, Any]
+
+# class TriggerCreate(TriggerBase):
+#     workflow_id: UUID
+
+class TriggerUpdate(TriggerBase):
+    type: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
+
+class TriggerRead(TriggerBase):
+    workflow_id: UUID
+    id: UUID
+
+    class Config:
+        from_attributes: True
