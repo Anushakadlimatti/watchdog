@@ -65,10 +65,12 @@ class TriggerRead(TriggerBase):
 class ActionBase(BaseModel):
     type: str
     config: Dict[str, Any]
+    order: int
 
 class ActionUpdate(ActionBase):
     type: Optional[str] = None
     config: Optional[Dict[str, Any]] = None
+    order: Optional[int]
 
 class ActionRead(ActionBase):
     id: UUID

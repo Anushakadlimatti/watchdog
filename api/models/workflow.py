@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, ForeignKey, DateTime, UUID
+from sqlalchemy import Column, String, ForeignKey, DateTime, UUID, Integer
 from sqlalchemy.ext.declarative import declarative_base
 import uuid
 from datetime import datetime, timezone
@@ -40,5 +40,31 @@ class Action(Base):
     workflow_id = Column(UUID(as_uuid=True), ForeignKey(Workflow.id))
     type = Column(String)
     config = Column(JSONB, nullable=False)
+    order = Column(Integer)
+    created_at=Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at= Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+class WorkflowRun(Base):
+    __tablename__ = "workflow_runs"
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    workflow_id = Column(UUID(as_uuid=True), ForeignKey(Workflow.id))
+    status = Column(String, default="pending")
+    trigger_payload = Column(JSONB)
+    started_at = Column(DateTime(timezone=True))
+    completed_at = Column(DateTime(timezone=True))
+    created_at=Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at= Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+class ActionExecution(Base):
+    __tablename__ = "action_executions"
+    id = Column(UUID(as_uuid=True), primary_key=True, index=True, default=uuid.uuid4)
+    workflow_run_id = Column(UUID(as_uuid=True), ForeignKey(WorkflowRun.id))
+    action_id = Column(UUID(as_uuid=True), ForeignKey(Action.id))
+    status = Column(String, default="pending")
+    retry_count = Column(Integer)
+    error_message = Column(String)
+    output = Column(JSONB)
+    started_at = Column(DateTime(timezone=True))
+    completed_at = Column(DateTime(timezone=True))
     created_at=Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at= Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

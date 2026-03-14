@@ -1,10 +1,11 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Request
 from config.database import sessionLocal, engine
 from sqlalchemy.orm import Session
-from models.workflow import User, Base, Workflow, Trigger, Action
+from models.workflow import User, Base, Workflow, Trigger, Action, WorkflowRun, ActionExecution
 from schemas import UserCreate, WorkflowCreate, WorkflowRead, WorkflowUpdate, UserRead, TriggerRead, TriggerBase, TriggerUpdate, ActionBase, ActionRead, ActionUpdate
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
+import requests
 
 app = FastAPI()
 
@@ -254,6 +255,7 @@ def createAction(workflowId: UUID, data: ActionBase, db: Session = Depends(get_d
         workflow_id = workflowId,
         type = data.type,
         config = data.config,
+        order = data.order,
         created_at = datetime.now(timezone.utc),
         updated_at = datetime.now(timezone.utc)
     )
@@ -293,6 +295,8 @@ def updateAction(workflowId: UUID, actionId: UUID, data: ActionUpdate, db: Sessi
         action_to_update.type = data.type
     if data.config is not None:
         action_to_update.config = data.config
+    if data.order is not None:
+        action_to_update.order = data.order
     action_to_update.updated_at = datetime.now(timezone.utc)
 
     try:
@@ -312,7 +316,7 @@ def deleteAction(workflowId: UUID, actionId: UUID, db: Session = Depends(get_db)
     workflow_exits = db.query(Workflow).filter(Workflow.id == workflowId).first()
 
     if not workflow_exits:
-        raise HTTPException(
+        raise HTTPException (
             status_code=404,
             detail="Workflow not found"
         )
@@ -320,7 +324,7 @@ def deleteAction(workflowId: UUID, actionId: UUID, db: Session = Depends(get_db)
     action_to_delete = db.query(Action).filter(Action.id == actionId, Action.workflow_id == workflowId).first()
 
     if not action_to_delete:
-        raise HTTPException(
+        raise HTTPException (
             status_code=404,
             detail="Action not found."
         )
@@ -332,7 +336,114 @@ def deleteAction(workflowId: UUID, actionId: UUID, db: Session = Depends(get_db)
     except Exception as e:
         db.rollback()
         print(e)
-        raise HTTPException(
+        raise HTTPException (
             status_code=400,
             detail="Failed to delete action"
         )
+
+@app.post("/workflows/{workflowId}/run", status_code=status.HTTP_201_CREATED)
+def ExecuteWorkflow(workflowId: UUID, db: Session = Depends(get_db)):
+    workflowExists = db.query(Workflow).filter(Workflow.id == workflowId).first()
+
+    if not workflowExists:
+        raise HTTPException(
+            status_code=404,
+            detail="Workflow does not exists."
+        )
+    
+    newWorkflowRun = WorkflowRun(
+        workflow_id = workflowId,
+        status = "pending"
+    )
+
+    db.add(newWorkflowRun)
+    db.commit()
+    db.refresh(newWorkflowRun)
+
+    actions = db.query(Action).filter(Action.workflow_id == workflowId).order_by(Action.order).all()
+
+    for action in actions:
+        newActionExecution = ActionExecution(
+            workflow_run_id = newWorkflowRun.id,
+            action_id = action.id,
+            status = "pending"
+        )
+
+        db.add(newActionExecution)
+    db.commit()
+
+    try:
+        requests.post(
+            "http://localhost:3000/execute",
+            json={"workflow_run_id": str(newWorkflowRun.id)}
+        )
+    except:
+        pass
+
+    return {
+        "workflow_run_id": newWorkflowRun.id,
+        "status": "pending"
+    }
+
+@app.post("/webhook/{trigger_id}", status_code=status.HTTP_200_OK)
+async def executeWebhookTrigger(trigger_id: UUID, request: Request, db: Session = Depends(get_db)):
+    trigger = db.query(Trigger).filter(Trigger.id == trigger_id).first()
+
+    if not trigger:
+        raise HTTPException(
+            status_code=404,
+            detail="Trigger not exists."
+        )
+    
+    if trigger.type != 'webhook':
+        raise HTTPException(
+            status_code=400,
+            detail="Trigger is not webhook type."
+        )
+    
+    secret_header = request.headers.get("x-wehbook-secret")
+    if not secret_header:
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid webhook secret"
+        )
+    payload = await request.json()
+
+    workflow_run = WorkflowRun(
+        workflow_id = trigger.workflow_id,
+        status = "pending",
+        trigger_payload = payload
+    )
+
+    db.add(workflow_run)
+    db.commit()
+    db.refresh(workflow_run)
+
+    actions = db.query(Action).filter(Action.workflow_id == trigger.workflow_id).order_by(Action.order).all()
+
+    for action in actions:
+        actionExecution = ActionExecution(
+            workflow_run_id = workflow_run.id,
+            status = "pending",
+            action_id = action.id
+        )
+
+        db.add(actionExecution)
+    db.commit()
+    try:
+        requests.post(
+            "http://localhost:3000/execute",
+            json={"workflow_run_id": str(workflow_run.id)}
+        )
+    except:
+        pass
+    
+    return {
+        "workflow_run_id": workflow_run.id,
+        "status": "pending"
+    }
+
+
+
+
+    
